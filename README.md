@@ -1,2 +1,1 @@
-# WorkshopC
-Static analyzer for C code safety and following a mold
+Migration in progress. Alpha coming soon...
