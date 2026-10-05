@@ -37,6 +37,7 @@ Prefer capital-letter macros? Here is the [same example with uppercase tags](doc
 - [Documentation](#documentation)
 - [Project status](#project-status)
 - [License](#license)
+- [Contact](#contact)
 
 ## Start here
 
@@ -103,6 +104,13 @@ WorkshopC is in closed **alpha**: rules, options and presets may still change be
 ## License
 
 License will be provided with public beta.
+
+## Contact
+For business inquiries, licensing requests, feedback, questions, or other matters related to this project, please reach out at:
+
+cruciblec.project@gmail.com
+
+If possible, please prefix the subject with a category such as [BUSINESS], [LICENSING], [FEEDBACK], or [QUESTION].
 
 ---
 
