@@ -33,7 +33,7 @@ Some decisions are the same in every preset:
 - **Arguments stay what they were given.** `forbid_arg_reassign` and `forbid_mut_arg_pointer` are on everywhere. A function whose arguments never change is easier to follow, and the change is cheap to make.
 - **Globals stay in their file.** Every preset requires globals to be `static` and forbids static variables in headers. Globals may still change, since `must_be_const` is off everywhere, but their state stays local to one file.
 - **References need no null check.** Every preset exempts reference parameters from the null check rule, since they can never be null.
-- **The same lifecycle names.** Every preset uses `_pod`, `_make`, `_copy`, `_move`, `_destroy`, `_return`, `_valid` and `_destroy_array`, and requires raii structs to be moved and destroyed through the address of a variable. Code keeps its names when a project changes preset. Only the free struct suffix differs, see [`opinionated`](#opinionated).
+- **The same lifecycle names.** Every preset uses the same lifecycle functions: `_pod`, `_make`, `_copy`, `_move`, `_destroy`, `_return`, `_valid` and `_destroy_array`, or in [`opinionated`](#opinionated), which uses CamelCase, `Pod`, `Make`, `Copy`, `Move`, `Destroy`, `Return`, `Valid` and `DestroyArray`. Every preset also requires raii structs to be moved and destroyed through the address of a variable. Code keeps its names when a project changes between the snake_case presets. Only the free struct suffix differs: `_init`, `_initialize` or `_initialize_manually`.
 - **Namespaces start at `src`.** Every preset that checks namespaces starts them at `src`, and derives include guards from the file path.
 - **Vendor code is left alone.** All presets share the same list of common third-party folder names, and [`embedded`](#embedded) adds the usual vendor and SDK folders.
 
@@ -133,11 +133,12 @@ The reasoning:
 
 > The default preset with the author's preferred severities and naming style: fail early on core safety rules while keeping warnings for selected style checks.
 
-`opinionated` starts from `default` and changes it in three ways:
+`opinionated` starts from `default` and changes it in four ways:
 
 - **Stricter about style.** Function pointer and struct typedefs, const fields and `goto` are errors, and null checks must be written out as comparisons, so that an unchecked dereference is rejected and every check is explicit.
 - **More relaxed about raii details.** The destruction order of raii structs is free, destroy functions are not standardized, and a raii struct may be used after it was destroyed. The private rule is a warning. Lifecycle functions and cleanup are still required for every owned resource, which keeps lifetimes predictable without dictating how a destroy function is written.
-- **Its own naming style.** Namespace prefixes have no separator and use at most three folders, which suits CamelCase names such as `UiButtonCreate` for a function declared in `src/ui/button/`. Private accessors contain `pget` and `pset`, interfaces end with `_port` and `_cport`, const spans with `_cspan`, flexible arrays use `flex`, and free structs are created with `_initialize_manually`. Restricted malloc allows `memory_alloc` and `memory_free`, a small, auditable set of wrappers, and spans are not required after every array, which keeps bounds next to the data without restricting every array declaration.
+- **CamelCase names.** Where the other presets use snake_case suffixes, `opinionated` uses CamelCase. Namespace prefixes have no separator and use at most three folders, so a function declared in `src/ui/button/` is named e.g. `UiButtonCreate`. A raii struct `UiButtonTimer` is then created with `UiButtonTimerMake` and cleaned up with `UiButtonTimerDestroy`. Pod structs are created with `Pod`, free structs with `InitializeManually`, vtables end with `VTable`, interfaces with `Port` and `CPort`, spans with `Span` and `CSpan`, flexible arrays use `Flex`, and private accessors contain `pget` and `pset`.
+- **Memory and arrays.** Restricted malloc allows `MemoryAlloc` and `MemoryFree`, a small, auditable set of wrappers, and spans are not required after every array, which keeps bounds next to the data without restricting every array declaration.
 
 ## `strict`
 

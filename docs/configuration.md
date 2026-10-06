@@ -95,7 +95,7 @@ WorkshopC comes with eight presets, built into the executable and selected with 
 | `adopt-more` | The second adoption step, adding stronger API and pointer checks. Move to `adopt-even-more` when it is clean. |
 | `adopt-even-more` | The final adoption step, with explicit resource lifetimes, ownership, and buffer rules. Existing projects can stay here. |
 | `default` | Recommended balanced settings for new projects and for users new to WorkshopC. |
-| `opinionated` | The default approach with the author's preferred rule severities and naming conventions. |
+| `opinionated` | The default approach with the author's preferred rule severities and CamelCase naming conventions. |
 | `strict` | High adherence to WorkshopC's safety principles, ownership model and struct conventions. |
 | `embedded` | Firmware-oriented settings: no dynamic allocation by default, explicit state handling, and vendor code exclusions. |
 | `nevernull` | For projects that never create or pass null pointers. Results from external libraries still need validation. Also stricter than `default` about pointer and global clarity in general. |
