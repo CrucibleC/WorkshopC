@@ -31,15 +31,17 @@ If you are new to WorkshopC, [the tour](tour.md) introduces the most important r
 - [Span struct rule](#span-struct-rule)
 - [Const field rule](#const-field-rule)
 - [No goto rule](#no-goto-rule)
+- [Typedef number rule](#typedef-number-rule)
 - [Suppressing rules](#suppressing-rules)
 - [Adjusting code for analysis](#adjusting-code-for-analysis)
 
 ## Reading this page
 
 - Each rule starts with its **config key** (its name in the config file) and the [diagnostic codes](diagnostic-codes.md) it can report, followed by an example config and a table of its options.
-- A rule is `Off` unless the config gives it a `level`. An option that is left out gets the default shown in its table. An option marked **Required** must be set whenever the rule is not `Off`, or the config is [reported as invalid](configuration.md#config-validation).
+- A config must give every rule a `level`: `Off`, `Warning` or `Error`. A rule that is not `Off` must have every option in its table written out, since no option has a default. An option described as "may not be empty" also needs a value other than `""`. Otherwise the config is [reported as invalid](configuration.md#config-validation).
 - In the examples, `// OK` marks code the rule accepts and `// Reported` marks code it reports, usually followed by the reason. The examples only show the lines that matter, so declarations they rely on are sometimes left out.
 - Code in system headers and in `third_party_includes` folders is never reported. The project's own code that uses it still is.
+- Code that a macro generates belongs to the file the macro is defined in, so a vendor macro used in the project's code is not reported. A name the macro builds with `##`, e.g. `type##_list` in a generic container macro, belongs to the file the macro is used in, since it is written nowhere else.
 - Tags such as `PRIVATE`, `REF` and `receives` are macros from the [tag headers](tag-headers.md). The examples use both naming styles.
 
 ## Rules at a glance
@@ -67,10 +69,8 @@ If you are new to WorkshopC, [the tour](tour.md) introduces the most important r
 | [Span struct](#span-struct-rule) | `span_struct` | Pointer and size travel together in standard span structs | `CCW23xx` |
 | [Const field](#const-field-rule) | `const_field` | Struct fields are never const themselves | `CCW24xx` |
 | [No goto](#no-goto-rule) | `no_goto` | No goto statements | `CCW25xx` |
+| [Typedef number](#typedef-number-rule) | `typedef_number` | Built-in number types are only used through a typedef, e.g. `int32_t` | `CCW26xx` |
 | [Suppression reason](#suppression-reason-rule) | `suppression_reason_rule` | Every suppression gives a reason | `CCW0002` |
-
-> [!NOTE]
-> Do not confuse default value for missing config setting with the default config (which contains its own full set).
 
 ## Enum rule
 
@@ -85,9 +85,9 @@ rules:
     allow_enum_typedef: false
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `allow_enum_typedef` | `false` | Allow enums that have a typedef, under the requirements in [Allow typedef enums](#allow-typedef-enums-allow_enum_typedef-true). When `false`, every enum definition is reported. |
+| Option | Description |
+|--------|-------------|
+| `allow_enum_typedef` | Allow enums that have a typedef, under the requirements in [Allow typedef enums](#allow-typedef-enums-allow_enum_typedef-true). When `false`, every enum definition is reported. |
 
 ### Forbid enums (`allow_enum_typedef: false`)
 
@@ -179,11 +179,11 @@ rules:
     getter_contains: private_get
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `private_field` | Required | The exact field name that makes a field private, e.g. `_private`. |
-| `getter_contains` | Required | Text that the name of a getter contains, anywhere in the name. |
-| `setter_contains` | Required | Text that the name of a setter contains, anywhere in the name. It may be the same as `getter_contains`, e.g. `private_` for both. |
+| Option | Description |
+|--------|-------------|
+| `private_field` | The exact field name that makes a field private, e.g. `_private`. May not be empty. |
+| `getter_contains` | Text that the name of a getter contains, anywhere in the name. May not be empty. |
+| `setter_contains` | Text that the name of a setter contains, anywhere in the name. It may be the same as `getter_contains`, e.g. `private_` for both. May not be empty. |
 
 With this config, the following is reported:
 
@@ -482,13 +482,13 @@ rules:
     forbid_mut_arg_pointer: true
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `forbid_null_assign` | `false` | Pointers, pointer fields and arrays of pointers may not be set to null. See [Null assignment](#null-assignment). |
-| `forbid_null_as_arg` | `false` | Null may not be passed as an argument to any function. |
-| `forbid_zero_init_for_objects_with_pointers` | `false` | An object that contains pointers may not be initialized with `{0}`. |
-| `forbid_arg_reassign` | `false` | Arguments, and the fields of arguments passed by value, may not be changed. See [Argument modification](#argument-modification). |
-| `forbid_mut_arg_pointer` | `false` | The address of an argument may only be taken as a pointer to const. |
+| Option | Description |
+|--------|-------------|
+| `forbid_null_assign` | Pointers, pointer fields and arrays of pointers may not be set to null. See [Null assignment](#null-assignment). |
+| `forbid_null_as_arg` | Null may not be passed as an argument to any function. |
+| `forbid_zero_init_for_objects_with_pointers` | An object that contains pointers may not be initialized with `{0}`. |
+| `forbid_arg_reassign` | Arguments, and the fields of arguments passed by value, may not be changed. See [Argument modification](#argument-modification). |
+| `forbid_mut_arg_pointer` | The address of an argument may only be taken as a pointer to const. |
 
 ```c
 static int g_count;         // Reported: globals and statics too, even though C sets them to 0
@@ -585,26 +585,28 @@ rules:
     apply_to_structs: true
     apply_to_typedefs: true
     require_ifndef_for_filepath: true
+    accept_pragma_once_instead_of_ifndef: false
     case_insensitive: false
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `top_dir` | Required | The folder the namespaces start in, e.g. `src`. The prefix is built from the folders after the first folder with this name in the header's path, not including it. A header that is not inside such a folder is not checked. Can be overridden with [`--prefix-top-dir`](usage.md#config-and-input-options). |
-| `stop_at_count` | `10` | The most folders used in the prefix. |
-| `work_from_top` | `false` | With `true`, the folders closest to `top_dir` are used, otherwise the folders closest to the file. |
-| `use_separator` | `false` | Write `separator` between the folder names and after the last one. Without it the folder names are joined directly, e.g. `appchrono`. |
-| `separator` | Required | The separator, e.g. `__`. Required even when `use_separator` is `false`. |
-| `apply_to_functions` | `false` | Function names in headers must have the prefix, static functions included, since every file that includes the header sees them. |
-| `apply_to_structs` | `false` | Struct names must have the prefix. |
-| `apply_to_typedefs` | `false` | Typedef names must have the prefix. |
-| `require_ifndef_for_filepath` | `false` | The header must have an include guard built from its path, see below. |
-| `case_insensitive` | `false` | A name only needs the same letters as the prefix, in upper or lower case. |
+| Option | Description |
+|--------|-------------|
+| `top_dir` | The folder the namespaces start in, e.g. `src`. The prefix is built from the folders after the first folder with this name in the header's path, not including it. A header that is not inside such a folder is not checked. Can be overridden with [`--prefix-top-dir`](usage.md#config-and-input-options). May not be empty. |
+| `stop_at_count` | The most folders used in the prefix. |
+| `work_from_top` | With `true`, the folders closest to `top_dir` are used, otherwise the folders closest to the file. |
+| `use_separator` | Write `separator` between the folder names and after the last one. Without it the folder names are joined directly, e.g. `appchrono`. |
+| `separator` | The separator, e.g. `__`. May not be empty, even when `use_separator` is `false`. |
+| `apply_to_functions` | Function names in headers must have the prefix, static functions included, since every file that includes the header sees them. |
+| `apply_to_structs` | Struct names must have the prefix. |
+| `apply_to_typedefs` | Typedef names must have the prefix. |
+| `require_ifndef_for_filepath` | The header must have an include guard built from its path, see below. |
+| `accept_pragma_once_instead_of_ifndef` | Accept `#pragma once` instead of the include guard. Needs `require_ifndef_for_filepath: true`, or the config is invalid. |
+| `case_insensitive` | A name only needs the same letters as the prefix, in upper or lower case. |
 
 Details:
 - Folder names keep their case in the prefix, and every character that is not a letter or digit becomes `_`, so a folder `My-Lib` becomes `My_Lib` in the prefix (e.g. `My_Lib__open`) and `MY_LIB` in the include guard. Finding `top_dir` in the path does not depend on case.
 - With `case_insensitive: true`, for the folders `App/Chrono` both `App__Chrono__start` and `app__chrono__start` are fine. Without it the case must match the folders exactly. The include guard is not affected, it is always in capital letters.
-- With `require_ifndef_for_filepath: true`, the first `#ifndef` in the first 10 lines of the header must be the path after `top_dir`, including the file name, in capital letters and joined with `_`, whatever the separator setting.
+- With `require_ifndef_for_filepath: true`, the first `#ifndef` in the first 10 lines of the header must be the path after `top_dir`, including the file name, in capital letters and joined with `_`, whatever the separator setting. With `accept_pragma_once_instead_of_ifndef: true` too, a `#pragma once` in the first 10 lines is accepted instead, and then the `#ifndef`, if any, is not checked.
 - Only headers are checked, since their names are the ones other files see, and headers in `third_party_includes` folders are skipped.
 - `top_dir` may not be one of the `third_party_includes`, and `stop_at_count` may not be negative.
 
@@ -644,9 +646,9 @@ rules:
     allow_direct_ptr_in_if_statement: true
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `allow_direct_ptr_in_if_statement` | `false` | Accept a plain `ptr` or `!ptr` as a null check. When `false`, the comparison must be written out, e.g. `ptr != NULL`. |
+| Option | Description |
+|--------|-------------|
+| `allow_direct_ptr_in_if_statement` | Accept a plain `ptr` or `!ptr` as a null check. When `false`, the comparison must be written out, e.g. `ptr != NULL`. |
 
 ```c
 int dereference_without_check(int* i_ptr)
@@ -707,7 +709,7 @@ Parameters of the [reference pointer rule](#reference-pointer-rule) can never be
 
 This rule makes the ownership of pointers visible. Every non-const pointer parameter must be tagged with how the function uses it, and call sites can be required to mark the argument with a matching operator, so both the function and the call site show what happens to the pointer. A [premade tag header](tag-headers.md) can be used as is, and all the names can be changed.
 
-**Config key:** `argument_pointer_movement` · **Codes:** `CCW0901`–`CCW0909`
+**Config key:** `argument_pointer_movement` · **Codes:** `CCW0901`–`CCW0912`
 
 There are three tags:
 - **move**: the function takes ownership of the pointer, e.g. it stores it or frees it. The caller may not use the pointer again until it has been given a new value.
@@ -725,11 +727,11 @@ rules:
     require_operator_for_modify_callsite: false
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `require_operator_for_move_callsite` | `false` | Arguments for move parameters are wrapped in the move operator. |
-| `require_operator_for_out_callsite` | `false` | Arguments for out parameters are wrapped in the out operator. |
-| `require_operator_for_modify_callsite` | `false` | Arguments for modify parameters are wrapped in the modify operator. |
+| Option | Description |
+|--------|-------------|
+| `require_operator_for_move_callsite` | Arguments for move parameters are wrapped in the move operator. |
+| `require_operator_for_out_callsite` | Arguments for out parameters are wrapped in the out operator. |
+| `require_operator_for_modify_callsite` | Arguments for modify parameters are wrapped in the modify operator. |
 
 Each setting decides whether that kind of argument is marked at the call site. When it is `true`, the argument must be wrapped in the operator. When it is `false`, the operator may not be used at all, so that every call site in the project looks the same.
 
@@ -790,6 +792,55 @@ void example(void)
 }
 ```
 
+### Moving a copied pointer
+
+A pointer that has been copied to or from another pointer may not be moved, since the other pointer would still point at what the called function now owns. This applies to both pointers. A copy is made when a pointer variable or struct field is given the value of another one: by a declaration (`Data* alias = data;`), an assignment (`holder.data = data;`), an initializer (`Holder holder = { data };`), or by copying a whole struct, which copies its pointer fields (`Holder copy = holder;`).
+
+The copy ends when either pointer is given a new value, e.g. `alias = NULL;`. Then the other one may be moved. Like use after move, the check follows the control flow, so a copy in one branch of an `if` counts after the `if`.
+
+```c
+void example(void)
+{
+  Data* data = NULL;
+  initialize_data(overwrite(&data));
+  Data* alias = data;
+  give_data_to_other_section(give(data));   // Reported: alias still points at data
+
+  Data* owner = NULL;
+  initialize_data(overwrite(&owner));
+  Data* handle = owner;
+  give_data_to_other_section(give(handle)); // Reported: owner still points at it
+
+  Data* first = NULL;
+  initialize_data(overwrite(&first));
+  Data* second = first;
+  first = NULL;
+  give_data_to_other_section(give(second)); // OK: first was given a new value
+}
+```
+
+### Moving a struct field
+
+A pointer field that is moved, through `.` or `->`, must be given a new value right after the move, so that the struct never holds a pointer to memory it no longer owns. The statement right after the one with the move must assign the field with `=`. Usually that is `NULL`, but any value other than the field itself will do, e.g. the next element of a list. When one statement moves several fields, of one or more structs, their assignments follow one after another, in any order. Passing the field's address to an `out` parameter does not count, since the function is not guaranteed to write a new value.
+
+A move in a `return` statement, or as the last statement of its block, can not be followed by its assignment, and is reported. To move a field out of a function, first take it into a local variable and set the field to `NULL`, then move the local variable. Setting the field to `NULL` also ends the [copy](#moving-a-copied-pointer) into the local variable.
+
+```c
+void example(borrows List* list, borrows Pair* pair, receives Data* spare)
+{
+  give_data_to_other_section(give(list->head));                   // OK
+  list->head = NULL;
+
+  give_two_to_other_section(give(pair->first), give(list->tail)); // OK: in any order
+  list->tail = NULL;
+  pair->first = spare;                                            // OK: any new value
+
+  give_data_to_other_section(give(pair->second));                 // Reported: another statement comes first
+  edit_data(pair->first, 1, 2, 3);
+  pair->second = NULL;
+}
+```
+
 ### Borrowed pointers
 
 A parameter tagged `borrows` or `initializes` is only borrowed by the function, so it may not be moved away. The same goes for what an `initializes` parameter points to.
@@ -802,6 +853,16 @@ void process(borrows Data* data)
 ```
 
 The movement tags may only be written on parameters, of function declarations and definitions and of function pointer types, not on variables, struct fields, functions or typedefs.
+
+### Pod creators
+
+When the [struct resource management rule](#struct-resource-management-rule-raii) is on too, the creator function of a [pod struct](#pod-structs) may not have a parameter tagged `receives` (move). A pod struct owns no resources, so its creator has nothing to take ownership of a pointer for. It is reported at the level of this rule. The other tags, and the creators of raii and free structs, are not affected.
+
+```c
+position position_pod(int x, int y);                 // OK
+buffer buffer_pod(receives Data* data, int size);    // Reported: a pod creator may not take ownership
+marker marker_pod(const Data* source);               // OK
+```
 
 ### Tags on function pointers
 
@@ -871,29 +932,29 @@ rules:
     free_struct_creator_suffix: _init
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `pod_struct_creator_suffix` | Required | Suffix of the creator function of a [pod struct](#pod-structs), e.g. `_pod`. |
-| `raii_struct_creator_suffix` | Required | Suffix of the make function of a [raii struct](#raii-structs), e.g. `_make`. |
-| `raii_struct_copy_suffix` | Required | Suffix of the copy function, e.g. `_copy`. |
-| `raii_struct_move_suffix` | Required | Suffix of the move function, e.g. `_move`. |
-| `raii_struct_destroyer_suffix` | Required | Suffix of the destroy function, e.g. `_destroy`. |
-| `raii_struct_return_suffix` | Required | Suffix of the return function, e.g. `_return`. |
-| `raii_struct_valid_suffix` | Required | Suffix of the validation function, e.g. `_valid`. |
-| `free_struct_creator_suffix` | Required | Suffix of the init function of a [free struct](#free-structs), e.g. `_init`. |
-| `allow_raii_struct_arrays` | `false` | Allow arrays of raii structs outside of structs, see [arrays of raii structs](#arrays-of-raii-structs). When `false`, they are only allowed inside structs. |
-| `raii_struct_array_destroyer_suffix` | Required with `allow_raii_struct_arrays` | Suffix of the array destroy function, e.g. `_destroy_array`. |
-| `raii_use_after_destroy` | `true` | When `false`, a raii struct may not be used after it has been destroyed. See [lifetime settings](#lifetime-settings). |
-| `raii_destroy_in_reverse_order` | `false` | Raii structs must be destroyed in reverse declaration order. |
-| `raii_may_only_move_value_ref` | `false` | The move function may only be given the address of a variable. |
-| `raii_may_only_destroy_value_ref` | `false` | The destroy function may only be given the address of a variable. |
-| `raii_standardized_destroy_definitions` | `false` | A destroy function destroys each of its raii fields exactly once, side by side in one block. See [standardized destroy functions](#standardized-destroy-functions). |
+| Option | Description |
+|--------|-------------|
+| `pod_struct_creator_suffix` | Suffix of the creator function of a [pod struct](#pod-structs), e.g. `_pod`. May not be empty. |
+| `raii_struct_creator_suffix` | Suffix of the make function of a [raii struct](#raii-structs), e.g. `_make`. May not be empty. |
+| `raii_struct_copy_suffix` | Suffix of the copy function, e.g. `_copy`. May not be empty. |
+| `raii_struct_move_suffix` | Suffix of the move function, e.g. `_move`. May not be empty. |
+| `raii_struct_destroyer_suffix` | Suffix of the destroy function, e.g. `_destroy`. May not be empty. |
+| `raii_struct_return_suffix` | Suffix of the return function, e.g. `_return`. May not be empty. |
+| `raii_struct_valid_suffix` | Suffix of the validation function, e.g. `_valid`. May not be empty. |
+| `free_struct_creator_suffix` | Suffix of the init function of a [free struct](#free-structs), e.g. `_init`. May not be empty. |
+| `allow_raii_struct_arrays` | Allow arrays of raii structs outside of structs, see [arrays of raii structs](#arrays-of-raii-structs). When `false`, they are only allowed inside structs. |
+| `raii_struct_array_destroyer_suffix` | Suffix of the array destroy function, e.g. `_destroy_array`. May not be empty when `allow_raii_struct_arrays` is `true`. |
+| `raii_use_after_destroy` | When `false`, a raii struct may not be used after it has been destroyed. See [lifetime settings](#lifetime-settings). |
+| `raii_destroy_in_reverse_order` | Raii structs must be destroyed in reverse declaration order. |
+| `raii_may_only_move_value_ref` | The move function may only be given the address of a variable. |
+| `raii_may_only_destroy_value_ref` | The destroy function may only be given the address of a variable. |
+| `raii_standardized_destroy_definitions` | A destroy function destroys each of its raii fields exactly once, side by side in one block. See [standardized destroy functions](#standardized-destroy-functions). |
 
 All the function suffixes must be different from each other.
 
 ### Pod structs
 
-Plain Old Data (pod) structs come with only one rule: they must always be initialized correctly. A pod struct has a creator function of the form `struct <name> <name>_pod(...)`. Every value of a pod struct must come from a function return value or another struct variable, whether it initializes a variable, is passed as an argument or is returned, so `{0}` and brace literals are only allowed in the `_pod` function. This rules out uninitialized and half-initialized structs.
+Plain Old Data (pod) structs come with only one rule: they must always be initialized correctly. A pod struct has a creator function of the form `struct <name> <name>_pod(...)`. Every value of a pod struct must come from a function return value, another struct variable or a field, whether it initializes a variable, is passed as an argument or is returned, so `{0}` and brace literals are only allowed in the `_pod` function. This rules out uninitialized and half-initialized structs.
 
 ```c
 typedef struct position
@@ -913,6 +974,13 @@ static inline position_t position_default(void)
 
 int position_sum(position_t position);
 
+typedef struct path
+{
+  position_t start, end;
+} path_t;
+
+path_t path_default(void);
+
 void foo(void)
 {
   position_t no_init_pos;                         // Reported: not initialized
@@ -920,6 +988,11 @@ void foo(void)
   position_t pos = position_default();            // OK
   pos = position_pod(1, 2, 3);                    // OK: pod structs may be reassigned
   position_t pos_2 = pos;                         // OK: copied from another variable
+  position_t* pos_ptr = &pos;                     // OK
+  position_t pos_3 = *pos_ptr;                    // OK: copied through a pointer
+  path_t path = path_default();                   // OK
+  position_t start = path.start;                  // OK: copied from a field
+  int start_sum = position_sum(path.start);       // OK: a field as an argument
   pos_2.y = 10;                                   // OK
   int sum = position_sum((position_t){1, 2, 3});  // Reported: brace literal as an argument
 }
@@ -927,7 +1000,7 @@ void foo(void)
 
 A pod struct may only contain other pod structs, not raii or free structs, since a copy of a pod struct is just a copy of its bytes.
 
-Arrays of pod structs are allowed outside of structs when every element, at every level of an array of arrays, is explicitly initialized from a function return value or another struct variable, e.g. `position_t line[2] = { position_pod(0, 0, 0), pos };`, so `{0}`, brace literals and missing elements are not allowed. Arrays of raii structs follow their own rules, see [arrays of raii structs](#arrays-of-raii-structs).
+Arrays of pod structs are allowed outside of structs when every element, at every level of an array of arrays, is explicitly initialized from a function return value, another struct variable or a field, e.g. `position_t line[2] = { position_pod(0, 0, 0), pos };`, so `{0}`, brace literals and missing elements are not allowed. Arrays of raii structs follow their own rules, see [arrays of raii structs](#arrays-of-raii-structs).
 
 ### Raii structs
 
@@ -1021,6 +1094,45 @@ void use_greetings(void)
 
 > [!TIP]
 > Raii structs work best together with the [private rule](#private-rule) or the [private alternative rule](#private-alternative-rule): a major point of a raii struct is that its internal state is always under the control of its own functions.
+
+#### Deleting copy, move or return
+
+Not every raii struct can be copied or moved. A struct that owns a mutex, a file handle or a hardware peripheral may not be copyable, and a function that is not needed yet does not have to be written yet. WorkshopC still requires the copy, move and return functions to be declared, but a macro can declare them only while WorkshopC analyzes the code, with [`WORKSHOPC_PARSING`](#adjusting-code-for-analysis). The real build then has no such function, so a call to it fails to compile, which is better than a function that is declared but never defined:
+
+```c
+#ifdef WORKSHOPC_PARSING
+#define DELETE_RAII_COPY(name)   struct name name##_copy(const struct name* self)
+#define DELETE_RAII_MOVE(name)   struct name name##_move(struct name* self)
+#define DELETE_RAII_RETURN(name) struct name name##_return(struct name* self)
+#else
+#define DELETE_RAII_COPY(name)   _Static_assert(1, #name "_copy is deleted")
+#define DELETE_RAII_MOVE(name)   _Static_assert(1, #name "_move is deleted")
+#define DELETE_RAII_RETURN(name) _Static_assert(1, #name "_return is deleted")
+#endif
+```
+
+```c
+typedef struct file_handle
+{
+  int descriptor;
+} file_handle;
+
+file_handle file_handle_make(const char* path);
+void file_handle_destroy(file_handle* self);
+file_handle file_handle_return(file_handle* self);
+_Bool file_handle_valid(const file_handle* self);
+
+DELETE_RAII_COPY(file_handle);    // OK: a file handle can not be copied
+DELETE_RAII_MOVE(file_handle);    // OK: not needed yet
+```
+
+- The macros take the struct's own name, not a typedef, so the struct must have one, e.g. `typedef struct file_handle { ... } file_handle;`.
+- The `;` after the macro belongs to the code that uses it. In the real build the macro becomes an always true `_Static_assert`, which needs C11, so that the `;` does not stand on its own.
+- Only copy, move and return can be deleted. The make, destroy and valid functions must exist, since the ownership rules depend on them.
+- WorkshopC sees the declaration, so it does not report a call to a deleted function. The compiler does, in the real build.
+
+> [!NOTE]
+> WorkshopC comes with no premade header for these macros, since the function suffixes are set in the config and differ between presets, e.g. `_copy` in `default` and `Copy` in `opinionated`. Write the macros once for your project, with the suffixes from your config's `raii_struct_copy_suffix`, `raii_struct_move_suffix` and `raii_struct_return_suffix`.
 
 #### Raii structs with raii fields
 
@@ -1171,12 +1283,12 @@ rules:
     interface_must_have_fields_that_are_private_alternative: true
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `vtable_suffix` | Required | Structs whose names end with this suffix are [vtables](#vtables). |
-| `interface_suffix` | Required | Structs whose names end with this suffix are [interfaces](#interfaces). |
-| `const_interface_suffix` | Required | Structs whose names end with this suffix are const interfaces. It is checked first, so it may end with `interface_suffix`. |
-| `interface_must_have_fields_that_are_private_alternative` | `false` | Both interface fields must be private for the [private alternative rule](#private-alternative-rule), which must then be on. |
+| Option | Description |
+|--------|-------------|
+| `vtable_suffix` | Structs whose names end with this suffix are [vtables](#vtables). May not be empty. |
+| `interface_suffix` | Structs whose names end with this suffix are [interfaces](#interfaces). May not be empty. |
+| `const_interface_suffix` | Structs whose names end with this suffix are const interfaces. It is checked first, so it may end with `interface_suffix`. May not be empty. |
+| `interface_must_have_fields_that_are_private_alternative` | Both interface fields must be private for the [private alternative rule](#private-alternative-rule), which must then be on. |
 
 The suffixes must be different from each other, and from the suffixes and names set for the array struct and span struct rules.
 
@@ -1250,9 +1362,9 @@ rules:
       - memory_free
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `list_of_allowed_malloc_functions` | `[]` | The functions in which the memory functions may be used. With an empty list, they may not be used anywhere. |
+| Option | Description |
+|--------|-------------|
+| `list_of_allowed_malloc_functions` | The functions in which the memory functions may be used. With an empty list, they may not be used anywhere. |
 
 Only the name of the enclosing function is checked. It must match a list entry exactly (case sensitive), and there are no requirements on its return type or parameters.
 
@@ -1292,10 +1404,10 @@ rules:
     require_return_for_void: true
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `allow_early_return` | `true` | Allow guard clauses: returns from an `if` without an `else` directly in the function's top-level block. |
-| `require_return_for_void` | `true` | `void` functions must also end with `return;`. |
+| Option | Description |
+|--------|-------------|
+| `allow_early_return` | Allow guard clauses: returns from an `if` without an `else` directly in the function's top-level block. |
+| `require_return_for_void` | `void` functions must also end with `return;`. |
 
 ```c
 int sum(const int* values, int count)
@@ -1400,28 +1512,28 @@ rules:
     const_local_static_must_be_caps: false
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `must_be_static` | `false` | File scope variables must have internal linkage through `static`. An `extern` declaration is therefore reported too. |
-| `must_be_const` | `false` | File scope variables must be deeply const, see below. Does not apply to static locals. |
-| `forbid_static_in_header` | `false` | No static globals, or static locals in functions, defined in a header, since every including file would get its own copy. |
-| `mutable_require_prefix` | `false` | Mutable globals must start with `mutable_prefix`. |
-| `mutable_prefix` | Required with `mutable_require_prefix` | The prefix of mutable globals, e.g. `g_`. |
-| `mutable_must_be_caps` | `false` | Mutable globals are written in capital letters. |
-| `const_require_prefix` | `false` | Deeply const globals must start with `const_prefix`. |
-| `const_prefix` | Required with `const_require_prefix` | The prefix of deeply const globals, e.g. `G_`. |
-| `const_must_be_caps` | `false` | Deeply const globals are written in capital letters. |
-| `mutable_local_static_require_prefix` | `false` | Mutable static locals must start with `mutable_local_static_prefix`. |
-| `mutable_local_static_prefix` | Required with `mutable_local_static_require_prefix` | The prefix of mutable static locals, e.g. `s_`. |
-| `mutable_local_static_must_be_caps` | `false` | Mutable static locals are written in capital letters. |
-| `const_local_static_require_prefix` | `false` | Deeply const static locals must start with `const_local_static_prefix`. |
-| `const_local_static_prefix` | Required with `const_local_static_require_prefix` | The prefix of deeply const static locals. |
-| `const_local_static_must_be_caps` | `false` | Deeply const static locals are written in capital letters. |
+| Option | Description |
+|--------|-------------|
+| `must_be_static` | File scope variables must have internal linkage through `static`. An `extern` declaration is therefore reported too. |
+| `must_be_const` | File scope variables must be deeply const, see below. Does not apply to static locals. |
+| `forbid_static_in_header` | No static globals, or static locals in functions, defined in a header, since every including file would get its own copy. |
+| `mutable_require_prefix` | Mutable globals must start with `mutable_prefix`. |
+| `mutable_prefix` | The prefix of mutable globals, e.g. `g_`. May not be empty when `mutable_require_prefix` is `true`. |
+| `mutable_must_be_caps` | Mutable globals are written in capital letters. |
+| `const_require_prefix` | Deeply const globals must start with `const_prefix`. |
+| `const_prefix` | The prefix of deeply const globals, e.g. `G_`. May not be empty when `const_require_prefix` is `true`. |
+| `const_must_be_caps` | Deeply const globals are written in capital letters. |
+| `mutable_local_static_require_prefix` | Mutable static locals must start with `mutable_local_static_prefix`. |
+| `mutable_local_static_prefix` | The prefix of mutable static locals, e.g. `s_`. May not be empty when `mutable_local_static_require_prefix` is `true`. |
+| `mutable_local_static_must_be_caps` | Mutable static locals are written in capital letters. |
+| `const_local_static_require_prefix` | Deeply const static locals must start with `const_local_static_prefix`. |
+| `const_local_static_prefix` | The prefix of deeply const static locals. May not be empty when `const_local_static_require_prefix` is `true`. |
+| `const_local_static_must_be_caps` | Deeply const static locals are written in capital letters. |
 
 Details:
 - **Deeply const** means that the variable and everything it points to is const: a pointer must be const on every level, both the pointer itself and what it points to, e.g. `const int* const`. An array is classified by its elements. A variable that is not deeply const is mutable.
 - Naming is chosen separately for four kinds of variables: mutable globals (`mutable_*`), deeply const globals (`const_*`), mutable static locals (`mutable_local_static_*`) and deeply const static locals (`const_local_static_*`). Static locals do not inherit the settings for globals.
-- When a required prefix is present, capitalization is only checked after the prefix. A prefix that is not required may be left out of the config.
+- When a required prefix is present, capitalization is only checked after the prefix. A prefix that is not required may be empty (`""`), but is still written out, like every option.
 - Local variables that are not static are never checked. A variable declared more than once (e.g. `extern` in a header and the definition in the source file) is only checked once, at its definition.
 
 Two common setups are internal state and constants:
@@ -1442,18 +1554,22 @@ const char* NAME_POINTER = "name";      // Reported: the pointer itself is mutab
 
 A reference pointer is a pointer parameter that always points to a real object, so it can never be null. It is marked with a tag, a macro that WorkshopC sees as an annotation. A [premade tag header](tag-headers.md) can be used as is, and the macro name can be changed freely. References make the difference between "may be null" and "is always an object" part of a function's signature, and the call sites are checked against it.
 
-**Config key:** `reference_pointer` · **Codes:** `CCW2001`–`CCW2006`
+**Config key:** `reference_pointer` · **Codes:** `CCW2001`–`CCW2012`
 
 ```yaml
 rules:
   reference_pointer:
     level: Warning
     disable_null_check_rule_for_reference_pointers: true
+    allow_direct_ptr_in_if_statement: false
+    only_allow_reference_pointers_as_function_parameters: false
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `disable_null_check_rule_for_reference_pointers` | `false` | The [null check rule](#null-check-rule), which must then be on, does not require a null check for reference parameters, since they can never be null. |
+| Option | Description |
+|--------|-------------|
+| `disable_null_check_rule_for_reference_pointers` | The [null check rule](#null-check-rule), which must then be on, does not require a null check for reference parameters, since they can never be null. |
+| `allow_direct_ptr_in_if_statement` | A plain pointer in an `if` condition, e.g. `if (pointer)` or `if (first && second)`, also checks it for null, so that its first use in the then branch may make it a reference, see [pointers checked for null](#pointers-checked-for-null). May not be `true` together with `only_allow_reference_pointers_as_function_parameters`. |
+| `only_allow_reference_pointers_as_function_parameters` | The tag may only be used on function parameters, also of function pointer types, not on [variables and struct fields](#reference-variables-and-fields) or on [functions and function pointer typedefs returning a reference](#functions-returning-a-reference). May not be `true` together with `allow_direct_ptr_in_if_statement`. |
 
 ```c
 void set_value(REF int* value, int new_value);
@@ -1475,7 +1591,7 @@ void example(REF int* reference, int* pointer)
 }
 ```
 
-The argument for a reference parameter must be the address of an object: a variable, a field of a variable (`&point.x`), an array element (`&numbers[1]`) or a field reached through another reference (`&reference->field`). An array or a string literal is accepted too, since it decays to a pointer to its first element, and so is another reference parameter passed on. A pointer variable, `NULL`, a pointer returned from a function, or anything reached through a normal pointer is reported. A reference parameter may not be reassigned (`=`, `+=`, `++`, ...), and the tag may only be used on pointers.
+The argument for a reference parameter must be the address of an object: a variable, a field of a variable (`&point.x`), an array element (`&numbers[1]`) or a field reached through another reference (`&reference->field`). An array or a string literal is accepted too, since it decays to a pointer to its first element, and so is another reference passed on: a reference parameter, variable or field. A pointer [right after a null check](#pointers-checked-for-null) is accepted as well. A pointer variable, `NULL`, a pointer returned from a function, or anything reached through a normal pointer is reported. A reference may not be reassigned (`=`, `+=`, `++`, ...), and the tag may only be used on pointers.
 
 A function pointer can be a reference too, so the function can call it without a null check. Its argument must then be a function, or another reference:
 
@@ -1493,7 +1609,109 @@ apply(NULL, 1, 2);              // Reported, and so are 0, (void*)0 and (math_fu
 apply(maybe_null, 1, 2);        // Reported: a normal function pointer may be null
 ```
 
-The reference tag may only be written on parameters, of function declarations and definitions and of function pointer types, not on variables, struct fields, functions or typedefs.
+The reference tag may be written on parameters, of function declarations and definitions and of function pointer types, on pointer variables and pointer struct fields, and on functions and function pointer typedefs returning a pointer, but not on other typedefs or anything else.
+
+### Functions returning a reference
+
+A function that returns a pointer can return a reference, by writing the tag in front of the function. Its result is then a reference for the caller: it can initialize a reference variable or be passed to a reference parameter. With `only_allow_reference_pointers_as_function_parameters: true`, the tag may not be used on functions.
+- Every declaration and the definition must carry the tag, or none of them.
+- The function may only return what a reference accepts: the address of an object, another reference (a parameter, variable or field, or the result of another function returning a reference), or a pointer [right after a null check](#pointers-checked-for-null).
+- It may not return the address of a local variable or parameter, since it no longer exists once the function has returned. Global variables and `static` locals are fine.
+
+```c
+static int g_total = 0;
+
+REF int* total(void)
+{
+  return &g_total;                          // OK: a global variable
+}
+
+REF int* find(Data* pointer)
+{
+  int local = 0;
+
+  if (pointer != NULL)
+    return &pointer->count;                 // Reported: a field reached through a normal pointer
+
+  return &local;                            // Reported: local no longer exists after the return
+}
+
+void use(void)
+{
+  set_value(total(), 1);                    // OK: the result is a reference
+}
+```
+
+A function pointer type can return a reference too, when the tag is written on its typedef, e.g. for a getter in a vtable. The tag has to be on a typedef: on a variable, field or parameter of a function pointer type, it keeps meaning that the function pointer itself is never null.
+- Only a function that returns a reference, or another function pointer of such a type, may be assigned or passed to it, also in initializer lists. A function returning a normal pointer would break the guarantee. The other way around is fine: a function returning a reference may be used as a normal function pointer, which only drops the guarantee.
+- A call through it gives a reference, also through a struct field of the type and through a typedef of the typedef.
+- With `only_allow_reference_pointers_as_function_parameters: true`, the tag may not be used on typedefs.
+
+```c
+typedef REF Data* (*getter_t)(const Store* store);   // getter_t returns a reference
+typedef Data* (*plain_getter_t)(const Store* store);
+
+getter_t get = store_first;                 // OK: store_first returns a reference
+getter_t bad = store_find;                  // Reported: store_find returns a normal pointer
+plain_getter_t loose = store_first;         // OK: the guarantee is only dropped
+
+edit_data(get(store), 1, 2, 3);             // OK: the result is a reference
+edit_data(loose(store), 1, 2, 3);           // Reported: a normal function pointer's result may be null
+
+REF getter_t never_null = get;              // the tag on a variable: the function pointer is never null
+```
+
+### Reference variables and fields
+
+A pointer variable or struct field with the tag is a reference too: it always points to a real object, so it can be passed to a reference parameter, and it may never be reassigned. With `only_allow_reference_pointers_as_function_parameters: true`, the tag may not be used on them at all.
+- A reference variable must be initialized when it is declared, with the same values a reference parameter accepts, or with a pointer [right after a null check](#pointers-checked-for-null).
+- A struct with reference fields must give every one of them such a value in its initializer list, when it is declared or written as a compound literal. Leaving a reference field out, giving it `NULL` or `0`, or declaring the struct without an initializer list is reported, also for structs nested in other structs and for the elements of arrays. A copy of another struct value is fine, since its references are set already.
+- A reference field may not be assigned later, since it only gets its value in the initializer list.
+
+```c
+typedef struct Holder
+{
+  REF Data* data;
+  int count;
+} Holder;
+
+void example(Data* pointer)
+{
+  Data local = make_data();
+
+  REF Data* reference = &local;             // OK
+  REF Data* nullable = pointer;             // Reported: a normal pointer may be null
+  Holder holder = { &local, 1 };            // OK
+  Holder missing = { .count = 1 };          // Reported: data is left out
+  Holder copy = holder;                     // OK: a copy of a struct whose references are set
+
+  edit_data(reference, 1, 2, 3);            // OK: a reference variable as an argument
+  edit_data(holder.data, 1, 2, 3);          // OK: a reference field too
+  reference = &other;                       // Reported: a reference may not be reassigned
+  holder.data = &other;                     // Reported
+}
+```
+
+### Pointers checked for null
+
+A normal pointer may become a reference right after an `if` statement has checked that it is not null: in the then branch, its first use may be the value of a reference variable or field, or the argument of a reference parameter. The check is written `pointer != NULL`, `pointer != 0`, `pointer != (void*)0` or `pointer != (Type*)0`, with the null on either side, and may be one of several conditions joined by `&&`. With `allow_direct_ptr_in_if_statement: true`, a plain pointer counts as a check too, e.g. `if (pointer)` or `if (first && second)`, but `if (!pointer)` does not. With `||` anywhere in the condition, the pointer may still be null, so it does not count. Struct fields can be checked the same way, e.g. `item->data != NULL`.
+
+```c
+void example(Data* first, Data* second)
+{
+  if (first != NULL && second != NULL)
+  {
+    REF Data* checked = first;              // OK: the first use after the check
+    edit_data(second, 1, 2, 3);             // OK
+    edit_data(first, 1, 2, 3);              // Reported: no longer the first use
+  }
+
+  if (first != NULL || second != NULL)
+    edit_data(first, 1, 2, 3);              // Reported: with '||', first may be null
+}
+```
+
+Only the first use counts, since later code may change the pointer or what it points to. Only the then branch counts: code after `if (pointer == NULL) return;` is not recognized.
 
 Every declaration of the same function must use the tag on the same parameters. This is checked across headers and source files, and between declarations and definitions in one source file. When a function has several reference parameters, each position is checked on its own.
 
@@ -1511,6 +1729,21 @@ reader(NULL);                               // Reported: a reference can never b
 ```
 
 The tag works side by side with the [argument pointer movement rule](#argument-pointer-movement-rule), in any order, e.g. `void scale(MUTABLE REF float* value, float factor);` called as `scale(MUT(&value), 2.0f);`, or `void scale(borrows massive float* value, float factor);` called as `scale(lend(&value), 2.0f);` with the lowercase headers. The reference tag is not a movement tag, so a non-const reference still needs one of the movement tags when that rule is on.
+
+A reference only borrows the object it points to, so while the argument pointer movement rule is on, it can not take or give away ownership. Both are reported at the level of this rule:
+- A parameter may not be both a reference and tagged move, on functions and on function pointer types alike.
+- A reference parameter may not be given to a move parameter. Pass on the object it points to by modify or as a const pointer instead.
+
+```c
+void consume(receives Data* data);
+void take(receives massive Data* data);     // Reported: a reference can not take ownership
+
+void process(borrows massive Data* data)
+{
+  edit_data(lend(data), 1, 2, 3);           // OK: a reference may be passed on to modify
+  consume(give(data));                      // Reported: a reference does not own the object
+}
+```
 
 ## Function discard rule
 
@@ -1566,16 +1799,16 @@ rules:
     use_naming_rules_on_one_array_field_structs_without_forbidding_public_arrays: false
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `only_allow_array_passing_to_library_functions` | `false` | Array fields may only be passed directly to standard library and third-party functions. |
-| `enforce_suffix_for_array_structs` | `false` | The name of an array struct ends with `array_struct_suffix`. |
-| `array_struct_suffix` | Required | The array struct suffix, e.g. `_array`. |
-| `enforce_size_suffix_for_array_structs` | `false` | The name of an array struct ends with the element count of every dimension. |
-| `size_suffix_with_underscore` | `true` | Separate the counts with underscores, e.g. `_5_10` rather than `510`. |
-| `flexible_size_name` | Required | Used instead of a count for a flexible array member, e.g. `flexible`. |
-| `struct_name_as_prefix` | `false` | The name of an array of project structs starts with the element struct's name. |
-| `use_naming_rules_on_one_array_field_structs_without_forbidding_public_arrays` | `false` | Allow arrays anywhere, and only apply the naming options. See [naming rules without forbidding arrays](#naming-rules-without-forbidding-arrays). |
+| Option | Description |
+|--------|-------------|
+| `only_allow_array_passing_to_library_functions` | Array fields may only be passed directly to standard library and third-party functions. |
+| `enforce_suffix_for_array_structs` | The name of an array struct ends with `array_struct_suffix`. |
+| `array_struct_suffix` | The array struct suffix, e.g. `_array`. May not be empty. |
+| `enforce_size_suffix_for_array_structs` | The name of an array struct ends with the element count of every dimension. |
+| `size_suffix_with_underscore` | Separate the counts with underscores, e.g. `_5_10` rather than `510`. |
+| `flexible_size_name` | Used instead of a count for a flexible array member, e.g. `flexible`. May not be empty. |
+| `struct_name_as_prefix` | The name of an array of project structs starts with the element struct's name. |
+| `use_naming_rules_on_one_array_field_structs_without_forbidding_public_arrays` | Allow arrays anywhere, and only apply the naming options. See [naming rules without forbidding arrays](#naming-rules-without-forbidding-arrays). |
 
 With `only_allow_array_passing_to_library_functions: false`, the rule only checks that arrays are struct fields. With it set to `true`, an array field may only be passed directly to a function declared by the standard library or in a `third_party_includes` path. Calls to project functions are reported, so project code must expose a safer wrapper or another deliberate interface instead.
 
@@ -1652,16 +1885,16 @@ rules:
     allow_pod_span_to_be_initialized_manually_if_static: false
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `span_struct_suffix` | Required | Structs whose names end with this suffix are spans, e.g. `_span`. |
-| `const_span_struct_suffix` | Required | Structs whose names end with this suffix are const spans, e.g. `_const_span`. It is checked first, so it may end with `span_struct_suffix`. |
-| `only_allow_array_passing_to_library_functions_and_spans` | `false` | Arrays, and the data of spans, may only be passed to standard library and third-party functions, span pod creators and struct initializers. See [passing arrays and span data](#passing-arrays-and-span-data). |
-| `allow_string_literals_as_const_char_arguments` | `false` | With `only_allow_array_passing_to_library_functions_and_spans`, a string literal may also be passed to a pointer to const characters, e.g. a `const char*` parameter. See [string literals](#string-literals). |
-| `allow_spans_to_be_given_fewer_elements_than_their_size` | `false` | A span may cover only the start of an array. |
-| `require_span_immediately_after_array` | `false` | Every array outside of a struct is followed right away by a span holding it, which is then the only way to reach the array. |
-| `only_allow_span_data_passing_in_one_line_static_functions` | `false` | The data of a span may only be passed on inside one-statement static wrapper functions. |
-| `allow_pod_span_to_be_initialized_manually_if_static` | `false` | A span with static storage duration may be initialized with braces. Needs the [struct resource management rule](#struct-resource-management-rule-raii) to be on. |
+| Option | Description |
+|--------|-------------|
+| `span_struct_suffix` | Structs whose names end with this suffix are spans, e.g. `_span`. May not be empty. |
+| `const_span_struct_suffix` | Structs whose names end with this suffix are const spans, e.g. `_const_span`. It is checked first, so it may end with `span_struct_suffix`. May not be empty. |
+| `only_allow_array_passing_to_library_functions_and_spans` | Arrays, and the data of spans, may only be passed to standard library and third-party functions, span pod creators and struct initializers. See [passing arrays and span data](#passing-arrays-and-span-data). |
+| `allow_string_literals_as_const_char_arguments` | With `only_allow_array_passing_to_library_functions_and_spans`, a string literal may also be passed to a pointer to const characters, e.g. a `const char*` parameter. See [string literals](#string-literals). |
+| `allow_spans_to_be_given_fewer_elements_than_their_size` | A span may cover only the start of an array. |
+| `require_span_immediately_after_array` | Every array outside of a struct is followed right away by a span holding it, which is then the only way to reach the array. |
+| `only_allow_span_data_passing_in_one_line_static_functions` | The data of a span may only be passed on inside one-statement static wrapper functions. |
+| `allow_pod_span_to_be_initialized_manually_if_static` | A span with static storage duration may be initialized with braces. Needs the [struct resource management rule](#struct-resource-management-rule-raii) to be on. |
 
 ### Spans and const spans
 
@@ -1695,7 +1928,7 @@ int_span_t wrong = { &values[3], 10 };         // Reported: only 7 elements are 
 int_span_t outside = { &values[12], 1 };       // Reported: index 12 is outside of the array
 ```
 
-When [struct resource management](#struct-resource-management-rule-raii) is enabled and a span has a pod creator, the span is a pod struct, and a pod struct may only be initialized from a function or another struct variable. A span with static storage duration can not call its pod creator, though: a global or `static` initializer must be a constant expression. With `allow_pod_span_to_be_initialized_manually_if_static: true`, a span or const span with static storage duration may therefore be initialized with braces. That covers globals, `static` globals and `static` locals. The braces are still checked like any span initializer, e.g. the count of the array. Other spans, other pod structs, and brace-built spans passed as arguments or returned are still reported.
+When [struct resource management](#struct-resource-management-rule-raii) is enabled and a span has a pod creator, the span is a pod struct, and a pod struct may only be initialized from a function, another struct variable or a field. A span with static storage duration can not call its pod creator, though: a global or `static` initializer must be a constant expression. With `allow_pod_span_to_be_initialized_manually_if_static: true`, a span or const span with static storage duration may therefore be initialized with braces. That covers globals, `static` globals and `static` locals. The braces are still checked like any span initializer, e.g. the count of the array. Other spans, other pod structs, and brace-built spans passed as arguments or returned are still reported.
 
 ```c
 int g_values[4];
@@ -1872,6 +2105,122 @@ done:                 // OK: a label is not a jump
 }
 ```
 
+## Typedef number rule
+
+This rule requires the built-in number types (`short`, `int`, `long`, `long long` and their `unsigned` versions) to be used through a typedef. That can be a standard one such as `int32_t` and `uint64_t` from `<stdint.h>`, or one of the project's own such as `i32`. The size of `int` and `long` differs between platforms, while a typedef states the size the code relies on, and it can be changed in one place.
+
+**Config key:** `typedef_number` · **Codes:** `CCW2601`–`CCW2603`
+
+```yaml
+rules:
+  typedef_number:
+    level: Warning
+    forbid_number_literals_in_plain_char: true
+    require_typedef_for_signed_and_unsigned_char: true
+    require_typedef_for_float_and_double: true
+    require_static_assert_for_number_typedefs: true
+```
+
+| Option | Description |
+|--------|-------------|
+| `forbid_number_literals_in_plain_char` | A number literal may not become the value of a plain `char`, in an initializer or a plain assignment, also through a cast or a minus sign: `char c = 10;`, `c = 65;` and `text[i] = 0;` are reported. A character literal (`'a'`, `'\n'`, `'\0'`) is fine, and so is a value that is already a `char`, `++`, `--`, `+=`, arithmetic on characters such as `c - '0'` or `'a' + offset`, and the zero initializer `{ 0 }`. |
+| `require_typedef_for_signed_and_unsigned_char` | `signed char` and `unsigned char` must be used through a typedef too, e.g. `int8_t` and `uint8_t`. |
+| `require_typedef_for_float_and_double` | `float`, `double` and `long double` must be used through a typedef too, e.g. a project's own `f32` and `f64`. |
+| `require_static_assert_for_number_typedefs` | A typedef that names a built-in number type the rule covers must be followed directly by a static assert on its size, except a character type, whose size is always 1, see [static asserts on number typedefs](#static-asserts-on-number-typedefs). Only checked for C11 and newer. |
+
+```c
+typedef int i32;                  // OK: a typedef that names a number type may be written with one
+typedef i32 count_t;              // OK: so may a typedef of a typedef
+typedef int (*callback_t)(void);  // Reported: only uses int, write i32 (*callback_t)(void)
+typedef unsigned* counts_ptr;     // Reported
+
+int counter = 0;                  // Reported: use e.g. int32_t or i32
+i32 typed = 0;                    // OK
+uint64_t total = 0;               // OK
+unsigned long length(void);       // Reported: the return type
+void set(short value);            // Reported: the parameter
+size_t size = sizeof(int);        // OK: expressions such as sizeof and casts are not checked
+
+struct header
+{
+  unsigned flags : 3;             // Reported
+  uint32_t checked : 1;           // OK
+};
+
+char name[16];                    // OK: plain char is text, not a number
+_Bool visible;                    // OK
+double ratio;                     // Reported with require_typedef_for_float_and_double
+unsigned char byte;               // Reported with require_typedef_for_signed_and_unsigned_char
+```
+
+Only declarations in the project's own code are checked: variables, parameters, struct and union fields, function return types and typedefs, also the return and parameter types of function pointers. The one place a built-in number type may be written is a typedef that names it, optionally `const`, such as `typedef int i32;` or `typedef const double cf64;`. A typedef that only uses one, of a function pointer, pointer or array, is checked like any other declaration. Expressions, literals and integer promotions are not, so `(int)x`, `sizeof(long)` and `x + 1` are fine. Plain `char` is never reported, since it holds text, and neither is `_Bool`. System headers and `third_party_includes` folders are skipped, as always.
+
+`main` is an exception, since the C standard fixes its signature: `int main(void)` and `int main(int argc, char** argv)` are fine. The variables in its body are still checked.
+
+Other signatures dictated by a library are not exceptions, e.g. a `qsort` comparator returning `int` or a signal handler taking an `int`. Wrap them in a [suppression](#suppressing-rules) with a reason:
+
+```c
+// WorkshopC off
+// Reason: qsort requires a comparator that returns int
+int compare_counts(const void* left, const void* right)
+{
+  const i32 a = *(const i32*)left;
+  const i32 b = *(const i32*)right;
+  return (a > b) - (a < b);
+}
+// WorkshopC on
+```
+
+> [!TIP]
+> To print a typedef'd number portably, use the format macros of `<inttypes.h>`, e.g. `printf("%" PRId32 "\n", value);` for an `int32_t`, or the project's own print wrappers, instead of `%d` and `%ld`, whose sizes are those of `int` and `long`.
+
+### Number literals in plain char
+
+With `forbid_number_literals_in_plain_char`, a plain `char` only gets characters written as characters. `char c = 10;` hides that the value is a newline, while `char c = '\n';` says so. A byte value belongs in `uint8_t` or `int8_t` instead.
+
+```c
+char letter = 'a';                // OK
+char newline = 10;                // Reported: write '\n'
+char negative = -1;               // Reported
+char cast = (char)65;             // Reported: write 'A'
+char copy = text[0];              // OK: already a char
+
+letter = 66;                      // Reported
+letter++;                         // OK: e.g. iterating over the letters
+letter += 2;                      // OK
+text[i] = 0;                      // Reported: write '\0'
+i32 digit = letter - '0';         // OK: arithmetic on characters
+
+char word[3] = { 'h', 105, '\0' }; // Reported: 105
+
+char buffer[64] = { 0 };          // OK: { 0 } zero initializes any object
+key zeroed = { 0 };               // OK, also when the first field is a plain char
+char pair[2] = { 0, 0 };          // Reported: only a single 0 is the zero initializer
+```
+
+### Static asserts on number typedefs
+
+With `require_static_assert_for_number_typedefs`, a typedef that names a built-in number type must be followed directly by a static assert whose condition uses `sizeof(<typedef>)`. Then the build fails on a platform where the type does not have the size the name promises. Any condition is accepted, and so are `_Static_assert`, C23's `static_assert` and the `static_assert` macro of `<assert.h>`.
+
+```c
+typedef int i32;
+_Static_assert(sizeof(i32) == 4, "i32 must be 4 bytes");    // OK
+
+typedef unsigned short u16;
+_Static_assert(sizeof(u16) * 8 == 16, "u16 must be 16 bits"); // OK: any condition with sizeof(u16)
+
+typedef unsigned char u8;                                  // OK: needs none, see below
+
+typedef short i16;                                         // Reported: the assert does not use sizeof(i16)
+_Static_assert(sizeof(short) == 2, "short must be 2 bytes");
+
+typedef double f64;                                        // Reported: no static assert after it
+typedef i32 count_t;                                       // OK: a typedef of a typedef needs none
+typedef int32_t i32_alias;                                 // OK
+```
+
+Only typedefs of types the rule covers need one. A `float` or `double` typedef needs one only with `require_typedef_for_float_and_double` on. A typedef of `signed char`, `unsigned char` or plain `char` never does: `sizeof` of a character type is 1 by definition, so such an assert could never fail. To rely on 8-bit bytes, use `uint8_t` and `int8_t`, which only exist where a byte has 8 bits. Static asserts came with C11, so files compiled as C99 or older are not checked.
+
 ## Suppressing rules
 
 Sometimes a rule has to give way, e.g. for code dictated by a legacy protocol or a hardware register layout. Every rule can be turned off for a section of a file with a comment saying `// WorkshopC off`, and back on with `// WorkshopC on`. Nothing is reported for the lines in between.
@@ -1896,6 +2245,8 @@ A suppression only applies to the file it is written in, so a header that turns 
 | `CCW0001` | A `WorkshopC off` is never turned back on in the same file |
 | `CCW0003` | A `WorkshopC on` has no preceding `WorkshopC off` |
 | `CCW0004` | A `WorkshopC off` comes while already turned off: suppressions can not be nested, and the first `on` ends the suppression |
+
+Every run counts the suppressed sections and the lines of code they suppress, in the [summary](usage.md#reading-the-output), and [`--list-suppressions`](usage.md#listing-suppressions) lists each section with its reason, so that the exceptions stay visible.
 
 > [!TIP]
 > Code that WorkshopC should not see at all, e.g. a compiler extension clang does not understand, can be hidden from it instead. See [Adjusting code for analysis](#adjusting-code-for-analysis).
@@ -1952,6 +2303,8 @@ It can also hide code that clang can not handle, e.g. an extension of another co
 ```
 
 Code hidden this way is not checked at all, so to only silence a rule, prefer [suppressing it](#suppressing-rules) with a reason.
+
+The other way around, a declaration can be shown to WorkshopC only, e.g. a raii struct's copy function that the real build deliberately does not have, see [deleting copy, move or return](#deleting-copy-move-or-return).
 
 ---
 

@@ -17,7 +17,7 @@ Codes have the form `CCWrrcc`:
 | Part | Meaning |
 |------|---------|
 | `CCW` | CrucibleC WorkshopC |
-| `rr` | The rule, numbered in the order of the default config. `00` is WorkshopC itself, e.g. its suppression checks. |
+| `rr` | The rule, numbered in the order of the default config. `00` is WorkshopC itself: its suppression checks, and files it could not analyze. |
 | `cc` | The check within the rule, starting at `01`. |
 
 A code says nothing about severity, since the level of every rule is set in the config. The same code can be a warning in one project and an error in another.
@@ -34,15 +34,16 @@ Suppressions work on sections of code, not on codes: `// WorkshopC off` turns of
 
 ## All codes
 
-The group rows link to the rule that reports the codes below them. `CCW0001`, `CCW0003` and `CCW0004` are always checked and reported as errors. Every other code belongs to a rule that is configured in the config.
+The group rows link to the rule that reports the codes below them. `CCW0001`, `CCW0003`, `CCW0004` and `CCW0005` are always checked and reported as errors. Every other code belongs to a rule that is configured in the config.
 
 | Code | Name | Reported when |
 |------|------|---------------|
-| | **00 — [WorkshopC suppressions](rules.md#suppressing-rules)** | |
+| | **00 — WorkshopC itself: [suppressions](rules.md#suppressing-rules) and [analyzed files](usage.md#which-files-are-analyzed)** | |
 | `CCW0001` | `suppression-not-turned-back-on` | 'WorkshopC off' is never turned back on with 'WorkshopC on' in the same file |
 | `CCW0002` | `suppression-missing-reason` | 'WorkshopC off' is not followed on the next line by a comment starting with 'Reason: ' |
 | `CCW0003` | `suppression-on-without-off` | 'WorkshopC on' without a preceding 'WorkshopC off' in the same file |
 | `CCW0004` | `suppression-nested` | 'WorkshopC off' while already turned off, suppressions can not be nested |
+| `CCW0005` | `no-compile-command` | A file has no entry in compile_commands.json, so it was not analyzed |
 | | **01 — [Enum](rules.md#enum-rule)** | |
 | `CCW0101` | `enum-not-allowed` | Enums are not allowed |
 | `CCW0102` | `enum-missing-typedef` | An enum must have a typedef |
@@ -88,6 +89,9 @@ The group rows link to the rule that reports the codes below them. `CCW0001`, `C
 | `CCW0907` | `operator-missing` | A callsite operator is missing for a parameter with a movement attribute |
 | `CCW0908` | `use-after-move` | A pointer is used after it may have been moved |
 | `CCW0909` | `function-pointer-movement-tag-mismatch` | A function or function pointer with other movement tags is assigned or passed to a function pointer, or called with it through a conditional |
+| `CCW0910` | `copied-pointer-moved` | A pointer that has been copied to or from another pointer is moved |
+| `CCW0911` | `moved-field-not-reassigned` | A moved pointer field is not given a new value right after the move |
+| `CCW0912` | `pod-creator-move-parameter` | The creator function of a pod struct has a parameter tagged move, while the struct resource management rule is on |
 | | **10 — [Struct resource management: struct definitions](rules.md#struct-resource-management-rule-raii)** | |
 | `CCW1001` | `struct-invalid-constructor` | A struct does not have exactly one pod, raii or free constructor function |
 | `CCW1002` | `struct-missing-destroy` | A raii struct is missing its destroy function |
@@ -96,15 +100,15 @@ The group rows link to the rule that reports the codes below them. `CCW0001`, `C
 | `CCW1005` | `struct-missing-return` | A raii struct is missing its return function |
 | `CCW1006` | `struct-missing-valid` | A raii struct is missing its validation function |
 | | **11 — [Struct resource management: initialization and assignment](rules.md#struct-resource-management-rule-raii)** | |
-| `CCW1101` | `pod-init` | A pod struct variable is not initialized from a function return value or another struct variable |
+| `CCW1101` | `pod-init` | A pod struct variable is not initialized from a function return value, another struct variable or a field |
 | `CCW1102` | `raii-init` | A raii struct variable is not initialized from a function return value |
-| `CCW1103` | `pod-array-init` | A pod struct array does not initialize every element from a function return value or another struct variable |
+| `CCW1103` | `pod-array-init` | A pod struct array does not initialize every element from a function return value, another struct variable or a field |
 | `CCW1104` | `raii-array-multidimensional` | A raii struct array outside of a struct has more than one dimension |
 | `CCW1105` | `raii-array-init` | A raii struct array does not initialize every element from a function return value |
 | `CCW1106` | `raii-array-missing-destroy-array` | A raii struct array is used but the struct has no array destroy function |
 | `CCW1107` | `struct-array-not-allowed` | An array of this kind of struct is only allowed inside structs |
 | `CCW1108` | `raii-reassigned` | A raii struct is reassigned with another struct value |
-| `CCW1109` | `pod-argument` | A pod struct argument is not a function return value or another struct variable |
+| `CCW1109` | `pod-argument` | A pod struct argument is not a function return value, another struct variable or a field |
 | `CCW1110` | `raii-argument` | A raii struct argument is not a function return value |
 | `CCW1111` | `pod-field-not-pod` | A struct field inside a pod struct is not a pod struct |
 | `CCW1112` | `move-not-value-ref` | A raii move function is given something other than the address of a variable |
@@ -122,7 +126,7 @@ The group rows link to the rule that reports the codes below them. `CCW0001`, `C
 | `CCW1211` | `raii-field-destroys-interrupted` | A return, goto or label between the raii field destroys may leave a struct partly destroyed |
 | | **13 — [Struct resource management: return values](rules.md#struct-resource-management-rule-raii)** | |
 | `CCW1301` | `raii-return-function-outside-return` | A raii return function is used outside of a return statement |
-| `CCW1302` | `pod-return` | A function returning a pod struct does not return a function return value or another struct variable |
+| `CCW1302` | `pod-return` | A function returning a pod struct does not return a function return value, another struct variable or a field |
 | `CCW1303` | `raii-return` | A function returning a raii struct does not return a function call |
 | `CCW1304` | `raii-return-member-access` | A member is accessed directly on a raii struct returned by a function |
 | `CCW1305` | `raii-return-discarded` | A raii struct returned by a function is discarded |
@@ -159,6 +163,12 @@ The group rows link to the rule that reports the codes below them. `CCW0001`, `C
 | `CCW2004` | `reference-tag-not-on-parameter` | A reference tag is used on something other than a parameter of a function or function pointer type |
 | `CCW2005` | `function-pointer-reference-tag-mismatch` | A function or function pointer with other reference tags is assigned or passed to a function pointer, or called with it through a conditional |
 | `CCW2006` | `reference-declaration-tag-mismatch` | A reference tag differs between declarations of the same function |
+| `CCW2007` | `reference-move-parameter` | A parameter is both a reference and tagged move, while the argument pointer movement rule is on |
+| `CCW2008` | `reference-moved` | A reference is given to a move parameter, while the argument pointer movement rule is on |
+| `CCW2009` | `reference-invalid-initializer` | A reference variable or field is initialized with a value that may be null |
+| `CCW2010` | `reference-not-initialized` | A reference variable or field is not given a value when it is declared |
+| `CCW2011` | `reference-invalid-return` | A function that returns a reference returns a value that may be null |
+| `CCW2012` | `reference-to-local-returned` | A function that returns a reference returns the address of a local variable |
 | | **21 — [Function discard](rules.md#function-discard-rule)** | |
 | `CCW2101` | `function-return-discarded` | A non-void function return value is discarded |
 | | **22 — [Array struct](rules.md#array-struct-rule)** | |
@@ -180,6 +190,10 @@ The group rows link to the rule that reports the codes below them. `CCW0001`, `C
 | `CCW2401` | `const-field` | A struct field is const itself, e.g. `const int` or `int* const`, a pointer to const is allowed |
 | | **25 — [No goto](rules.md#no-goto-rule)** | |
 | `CCW2501` | `goto-not-allowed` | A goto statement is used, including a computed goto |
+| | **26 — [Typedef number](rules.md#typedef-number-rule)** | |
+| `CCW2601` | `number-type-without-typedef` | A declaration uses a built-in number type such as `int` directly instead of through a typedef, e.g. `int32_t` |
+| `CCW2602` | `number-literal-in-plain-char` | A number literal becomes the value of a plain `char`, instead of a character literal |
+| `CCW2603` | `number-typedef-without-static-assert` | A typedef of a built-in number type is not followed directly by a static assert on its size |
 
 ---
 

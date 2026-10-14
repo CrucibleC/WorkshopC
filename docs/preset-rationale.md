@@ -36,6 +36,7 @@ Some decisions are the same in every preset:
 - **The same lifecycle names.** Every preset uses the same lifecycle functions: `_pod`, `_make`, `_copy`, `_move`, `_destroy`, `_return`, `_valid` and `_destroy_array`, or in [`opinionated`](#opinionated), which uses CamelCase, `Pod`, `Make`, `Copy`, `Move`, `Destroy`, `Return`, `Valid` and `DestroyArray`. Every preset also requires raii structs to be moved and destroyed through the address of a variable. Code keeps its names when a project changes between the snake_case presets. Only the free struct suffix differs: `_init`, `_initialize` or `_initialize_manually`.
 - **Namespaces start at `src`.** Every preset that checks namespaces starts them at `src`, and derives include guards from the file path.
 - **Vendor code is left alone.** All presets share the same list of common third-party folder names, and [`embedded`](#embedded) adds the usual vendor and SDK folders.
+- **Libraries are included with `<>`, the project's own headers with quotes.** Every preset except the adoption path treats a file included with `<>` as third party ([angle bracket includes](configuration.md#angle-bracket-includes)), so libraries are skipped without listing their folders. A new project can follow that convention from the start. The adoption presets leave it off: an existing codebase may include its own headers with `<>`, and those would be skipped without notice, hiding the findings the adoption is meant to bring up.
 
 ## How severity is chosen
 
@@ -59,7 +60,7 @@ The three adoption presets bring an existing codebase toward the full WorkshopC 
 |-|-------|
 | **Error** | Suppression reason, private alternative, reference pointer: all of them only apply to code that opts in |
 | **Warning** | Enum, private, assignment (without the null bans), null check, interfaces, strict switch, global variable (no naming requirements), span struct (shape and counts only), const field, no goto |
-| **Off** | Function pointer, typedef struct, prefix namespace, argument pointer movement, struct resource management, restricted malloc, single return, function discard, array struct |
+| **Off** | Function pointer, typedef struct, prefix namespace, argument pointer movement, struct resource management, restricted malloc, single return, function discard, array struct, typedef number |
 
 - **Real bugs first, with small fixes.** Null checks find unsafe dereferences while still allowing short `if (ptr)` checks. The enum rule catches accidental mixing of integers and enums while keeping existing enum types. Strict switch catches missing states and accidental fallthrough. All of them are warnings, so they can be cleared gradually.
 - **Intent without upheaval.** The assignment rule makes initialization and argument intent clearer, without yet banning common null patterns. Private fields stay behind a small set of accessors.
@@ -96,7 +97,7 @@ The reasoning:
 - **Results are handled.** Callers must handle returned status and error information.
 - **Raw data stays contained.** Buffer sizes stay attached to their data, and the ways raw data can escape are restricted.
 
-**Why existing projects can stay here.** `default` is meant for new projects. What remains between `adopt-even-more` and `default` (call site operators, namespaced names, global naming conventions, typedefs for every struct, and errors instead of warnings for ownership, resources and allocation) would be a large refactor of an existing codebase for comparatively little extra safety. Ambitious projects can first make `adopt-even-more` clean with `--warnings-as-errors`.
+**Why existing projects can stay here.** `default` is meant for new projects. What remains between `adopt-even-more` and `default` (call site operators, namespaced names, global naming conventions, typedefs for every struct and every built-in number type, and errors instead of warnings for ownership, resources and allocation) would be a large refactor of an existing codebase for comparatively little extra safety. Ambitious projects can first make `adopt-even-more` clean with `--warnings-as-errors`.
 
 ## `default`
 
@@ -122,12 +123,13 @@ The reasoning:
 | [Single return](rules.md#single-return-rule) | Warning | Guard clauses allowed, `return;` optional in `void` functions | One exit point is easier to follow, but guard clauses are often clearer, so they are allowed. |
 | [Strict switch](rules.md#strict-switch-rule) | Error | | Every state and branch is handled explicitly. |
 | [Global variable](rules.md#global-variable-rule) | Error | Static, `g_` and `s_` prefixes, constants in capitals | Globals stay file-local, and mutable state is easy to spot. |
-| [Reference pointer](rules.md#reference-pointer-rule) | Error | Exempt from null checks | Parameters that always hold an object are separated from nullable pointers. |
+| [Reference pointer](rules.md#reference-pointer-rule) | Error | Exempt from null checks, `if (pointer)` counts as a null check | Parameters that always hold an object are separated from nullable pointers. |
 | [Function discard](rules.md#function-discard-rule) | Error | | Status and error results are never silently ignored. |
 | [Array struct](rules.md#array-struct-rule) | Warning | Naming only, arrays allowed anywhere | Spans already guard array sizes, so array structs only get consistent names. |
 | [Span struct](rules.md#span-struct-rule) | Error | A span after every array, raw data only to library functions, string literals allowed for `const char*` | Buffer lengths stay coupled to their data, which makes bounds easy to verify. A string literal carries its own terminator and can not be written through `const char*`, so it needs no span. |
 | [Const field](rules.md#const-field-rule) | Warning | | Keeps whole-object initialization and assignment possible, a matter of convenience rather than safety. |
 | [No goto](rules.md#no-goto-rule) | Warning | | Structured control flow is easier to follow, but a `goto` is not a defect in itself. |
+| [Typedef number](rules.md#typedef-number-rule) | Warning | No number literals in plain `char`, other options off | Sizes are stated, e.g. `int32_t` instead of `int`, and characters are written as characters. A matter of portability and readability, and `float`, `double` and byte types stay free. |
 
 ## `opinionated`
 
@@ -135,7 +137,7 @@ The reasoning:
 
 `opinionated` starts from `default` and changes it in four ways:
 
-- **Stricter about style.** Function pointer and struct typedefs, const fields and `goto` are errors, and null checks must be written out as comparisons, so that an unchecked dereference is rejected and every check is explicit.
+- **Stricter about style.** Function pointer and struct typedefs, const fields and `goto` are errors, the typedef number rule also covers `signed char`, `unsigned char`, `float` and `double` and requires a static assert after every number typedef, and null checks must be written out as comparisons, so that an unchecked dereference is rejected and every check is explicit.
 - **More relaxed about raii details.** The destruction order of raii structs is free, destroy functions are not standardized, and a raii struct may be used after it was destroyed. The private rule is a warning. Lifecycle functions and cleanup are still required for every owned resource, which keeps lifetimes predictable without dictating how a destroy function is written.
 - **CamelCase names.** Where the other presets use snake_case suffixes, `opinionated` uses CamelCase. Namespace prefixes have no separator and use at most three folders, so a function declared in `src/ui/button/` is named e.g. `UiButtonCreate`. A raii struct `UiButtonTimer` is then created with `UiButtonTimerMake` and cleaned up with `UiButtonTimerDestroy`. Pod structs are created with `Pod`, free structs with `InitializeManually`, vtables end with `VTable`, interfaces with `Port` and `CPort`, spans with `Span` and `CSpan`, flexible arrays use `Flex`, and private accessors contain `pget` and `pset`.
 - **Memory and arrays.** Restricted malloc allows `MemoryAlloc` and `MemoryFree`, a small, auditable set of wrappers, and spans are not required after every array, which keeps bounds next to the data without restricting every array declaration.
@@ -148,6 +150,7 @@ Changes from `default`:
 - **Every rule is an error**, including the style rules, and `void` functions end with `return;`.
 - **Every movement is marked.** Call sites mark modify arguments too, with `lend()` or `MUT()`, so move, output and modify semantics are visible at declarations and call sites alike.
 - **Null checks are written out** as explicit comparisons.
+- **Every number has a stated size.** The typedef number rule covers `signed char`, `unsigned char`, `float` and `double` too, and every number typedef except the character types is followed by a static assert on its size.
 - **Precise names.** Namespace prefixes are case sensitive, use `__` as separator and up to 20 folders. Constants need the `G_` prefix, and constant static locals `S_` and capital letters, so that mutable state and constants are distinct at a glance.
 - **Arrays live in structs.** Arrays may only be declared inside structs, which are named after their element struct and carry their sizes in their names. Array fields are only passed to library functions, spans always hold their whole array, and span data is only passed on in one-statement wrappers, so raw data can not escape reviewed code. String literals get no exception either: they too reach project functions through spans.
 - **Tighter resource handling.** Arrays of raii structs are not allowed outside of structs, restricted malloc allows only `memory_alloc` and `memory_free`, and free structs are created with `_initialize_manually`, a name that makes the choice to opt out of the rules deliberate.
@@ -177,6 +180,7 @@ Every exception must be justified for audit and review, and the remaining rules 
 | Const field | Warning | Make the whole object const instead, so that tables are placed in flash as a whole. |
 | Argument pointer movement | Warning, every operator marked | Every movement, including modification, is visible at the call site. |
 | No goto | Error | Structured control flow, in the spirit of MISRA C. |
+| Typedef number | Error, every option on | Register widths and data layouts must not depend on the compiler, so every number type states its size, as MISRA C's typedef advice asks, and a static assert proves it for every target. |
 | Suppression reason | Error | Every deviation from the rules needs a written reason for reviews and audits. |
 
 The preset also treats `Drivers/`, `CMSIS/` and `Middlewares/` as third party, where vendor HALs and RTOS code usually live (e.g. STM32Cube projects), together with `managed_components/` for ESP-IDF components and `.pio/libdeps/` for PlatformIO libraries.

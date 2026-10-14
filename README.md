@@ -1,4 +1,4 @@
-# WorkshopC (Closed Alpha)
+# WorkshopC (Closed Beta)
 
 *Ownership and lifetimes for C, without leaving C, enforced by static analysis.*
 
@@ -37,7 +37,6 @@ Prefer capital-letter macros? Here is the [same example with uppercase tags](doc
 - [Documentation](#documentation)
 - [Project status](#project-status)
 - [License](#license)
-- [Contact](#contact)
 
 ## Start here
 
@@ -50,6 +49,13 @@ Prefer capital-letter macros? Here is the [same example with uppercase tags](doc
 WorkshopC is a configurable Clang-based analyzer that enforces a safer style of C: explicit ownership, RAII-style lifetimes, non-null references and encapsulation, all in plain C that still compiles with any compiler.
 
 Most C linters look for bugs in whatever style the code is already written in. WorkshopC instead enforces a style in which whole classes of bugs are hard to write in the first place. Ownership is part of every function signature. Every resource has exactly one owner and a checked lifetime. Pointers that may be null are checked, and pointers that can never be null say so. Buffers never travel without their size. The tags that make this possible are ordinary macros that disappear in a normal build, so the code stays standard C.
+
+WorkshopC is safety oriented, but not every rule is a safety check in the narrow sense:
+
+- **Some rules are about style and consistency,** such as typedefs for structs and function pointers, naming conventions and namespace prefixes. They make code predictable to read and review, which in and of itself is a safety feature since code you understand is easier to reason about.
+- **Many rules create safety through architecture.** Instead of finding a particular bug, they enforce a pattern, such as one owner per resource, private fields reached only through their struct's functions, standard interfaces, and spans instead of bare arrays. It helps avoid bugs, and a bug that remains can then only live in the few places allowed to touch the data, which keeps it local and easier to find.
+
+Every rule can be set to `Off`, `Warning` or `Error`, so each project decides how much of the style it adopts.
 
 WorkshopC is part of [The Crucible C Project](../README.md), a C project for clean, predictable and safer code.
 
@@ -99,11 +105,13 @@ The documentation is written to be read in order, but every page also stands on 
 
 ## Project status
 
-WorkshopC is in closed **alpha**: rules, options and presets may still change between versions.
+WorkshopC is in **beta**: rules, options and presets may still change between versions.
 
 ## License
 
-License will be provided with public beta.
+Copyright © 2026 CrucibleC. All rights reserved.
+
+This documentation is shared for preview and evaluation only. No license to copy, modify, or redistribute it is granted. WorkshopC itself is unreleased, and its license will be published at release.
 
 ## Contact
 For business inquiries, licensing requests, feedback, questions, or other matters related to this project, please reach out at:
