@@ -1,3 +1,5 @@
+[Part of The Crucible C Project.](https://github.com/CrucibleC/CrucibleC)
+
 # WorkshopC (Closed Beta)
 
 *Ownership and lifetimes for C, without leaving C, enforced by static analysis.*
