@@ -63,7 +63,7 @@ Build folder: /repo/build (compile_commands_dir in the config)
 
 ## Which files are analyzed
 
-- A file given on the command line is analyzed.
+- A file given on the command line is analyzed, unless its path matches `third_party_includes`. Such a file is skipped and counted as third party, also when an editor runs WorkshopC on an open vendored file. A run given only such files reports nothing and ends with exit code `0`.
 - A folder is searched recursively for `.c` files. Folders that match `third_party_includes` and the folder of the compilation database are skipped.
 - Every `.c` file needs an entry in `compile_commands.json`, since WorkshopC analyzes it with the same flags as the build and never guesses them. A file without one, e.g. a new file the build was not configured for yet, or a file in a searched folder that no target compiles, is not analyzed: it gets the error `CCW0005` on its first line, and the run ends with [exit code](#exit-codes) `67`. Regenerate `compile_commands.json`, or add the file to the build.
 - Headers are checked through the `.c` files that include them. A problem in a header that is included by several files is only reported once.

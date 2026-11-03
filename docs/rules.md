@@ -1000,7 +1000,7 @@ void foo(void)
 
 A pod struct may only contain other pod structs, not raii or free structs, since a copy of a pod struct is just a copy of its bytes.
 
-Arrays of pod structs are allowed outside of structs when every element, at every level of an array of arrays, is explicitly initialized from a function return value, another struct variable or a field, e.g. `position_t line[2] = { position_pod(0, 0, 0), pos };`, so `{0}`, brace literals and missing elements are not allowed. Arrays of raii structs follow their own rules, see [arrays of raii structs](#arrays-of-raii-structs).
+Arrays of pod structs are allowed outside of structs when every element, at every level of an array of arrays, is explicitly initialized from a function return value, another struct variable or a field, e.g. `position_t line[2] = { position_pod(0, 0, 0), pos };`, so `{0}`, brace literals and missing elements are not allowed. Arrays of raii structs follow their own rules, see [arrays of raii structs](#arrays-of-raii-structs), and arrays of [free structs](#free-structs) have none.
 
 ### Raii structs
 
@@ -1262,6 +1262,8 @@ int graphics_renderer_init(graphics_renderer* self, int arg1, float arg2, graphi
 The suffix can be made deliberately long to make users stop and think, e.g. `free_struct_creator_suffix: _init_manual_management_struct`.
 
 The init function sets up the free struct itself, so it may assign the struct's own members freely, even when a member is a raii struct. Normally reassigning a raii struct is forbidden since the old value would leak, but in the init function there is no old value yet.
+
+Arrays of free structs are allowed anywhere, as globals, statics and locals, and of any dimension. Like a single free struct, they may be initialized in any way or not at all, e.g. `free_struct_t buffers[4];` or `free_struct_t grid[2][2] = { 0 };`. The [array struct rule](#array-struct-rule) still applies to them like to any other array.
 
 ### Standard library and third-party structs
 
